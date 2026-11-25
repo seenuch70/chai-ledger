@@ -68,6 +68,9 @@ input[type=number],input[type=date]{font:inherit;padding:11px 12px;border-radius
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
 .err{color:var(--danger);font-size:.9rem;min-height:1.2em}
+textarea{font:inherit;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%;resize:vertical}
+textarea:focus-visible{outline:3px solid var(--am);outline-offset:2px}
+.remark{margin-top:12px;padding:8px 10px;border-left:3px solid var(--am);background:var(--bg);border-radius:6px;font-size:.92rem;white-space:pre-wrap;overflow-wrap:anywhere}
 .pbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:14px}
 .pbar input{width:100px;padding:7px 9px}
 .foot{margin-top:22px;font-size:.8rem;color:var(--muted)}
@@ -119,6 +122,11 @@ const KEY='tcv-records';
 let data={};
 try{data=JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch(e){data={}}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}}
+let notes={};
+try{notes=JSON.parse(localStorage.getItem('tcv-notes')||'{}')||{}}catch(e){notes={}}
+function saveNotes(){try{localStorage.setItem('tcv-notes',JSON.stringify(notes))}catch(e){}}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const remarkHtml=d=>notes[d]?'<div class="remark"><b>Remark:</b> '+esc(notes[d])+'</div>':'';
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const todayStr=ymd(new Date());
@@ -156,7 +164,7 @@ function sessBlock(d,withActions){
     let act='';
     if(withActions)act='<div class="actions"><button class="btn sm ghost" data-edit="'+k+'">'+(r?'Edit':'Add')+'</button>'+(r?'<button class="btn sm del" data-del="'+k+'">Delete</button>':'')+'</div>';
     return '<div class="sess"><div class="row"><span class="name"><i class="dot '+cls+'"></i>'+label+'</span>'+act+'</div>'+sessLine(r)+'</div>';
-  }).join('');
+  }).join('')+remarkHtml(d);
 }
 function dateLabel(d){const [y,m,dd]=d.split('-').map(Number);return dd+' '+MN[m-1]+' '+y}
 function monthNav(){return '<div class="mnav"><button class="btn ghost sm" data-m="-1" aria-label="Previous month">Prev</button><b>'+MN[mm]+' '+my+'</b><button class="btn ghost sm" data-m="1" aria-label="Next month">Next</button></div>'}
@@ -187,12 +195,12 @@ function renderCalendar(){
   for(let i=0;i<lead;i++)cells+='<div class="day blank"></div>';
   for(let i=1;i<=n;i++){
     const d=my+'-'+pad(mm+1)+'-'+pad(i);
-    const dots=(rec(d,'morning')?'<i class="dot am"></i>':'')+(rec(d,'evening')?'<i class="dot pm"></i>':'');
+    const dots=(rec(d,'morning')?'<i class="dot am"></i>':'')+(rec(d,'evening')?'<i class="dot pm"></i>':'')+(notes[d]?'<i class="dot" style="background:var(--muted)"></i>':'');
     cells+='<button class="day'+(d===todayStr?' today':'')+'" data-d="'+d+'" aria-pressed="'+(d===sel)+'" aria-label="'+i+' '+MN[mm]+'"><span>'+i+'</span><span class="dots">'+dots+'</span></button>';
   }
   const t=dayTotal(sel);
   $('#app').innerHTML=
-  '<div class="grid g2"><section class="card"><div class="row" style="margin-bottom:10px">'+monthNav()+'</div><div class="cal">'+cells+'</div><div class="legend"><span><i class="dot am"></i> Morning recorded</span><span><i class="dot pm"></i> Evening recorded</span></div></section>'+
+  '<div class="grid g2"><section class="card"><div class="row" style="margin-bottom:10px">'+monthNav()+'</div><div class="cal">'+cells+'</div><div class="legend"><span><i class="dot am"></i> Morning recorded</span><span><i class="dot pm"></i> Evening recorded</span><span><i class="dot" style="background:var(--muted)"></i> Remark</span></div></section>'+
   '<section class="card"><h2>'+dateLabel(sel)+'</h2><div class="stats"><div class="stat"><b class="t">'+t.tea+'</b><span class="muted">Tea</span></div><div class="stat"><b class="c">'+t.coffee+'</b><span class="muted">Coffee</span></div><div class="stat"><b>'+inr(t.rev)+'</b><span class="muted">Amount</span></div></div>'+sessBlock(sel,true)+'</section></div>';
 }
 
@@ -203,13 +211,14 @@ function renderEntry(){
   '<div><div class="muted" style="margin-bottom:6px">Session</div><div class="seg">'+sb+'</div></div>'+
   '<div><span class="badge" id="f-badge"></span></div>'+
   '<div class="three"><label>Tea cups<input type="number" id="f-tea" min="0" step="1" inputmode="numeric"></label><label>Coffee cups<input type="number" id="f-coffee" min="0" step="1" inputmode="numeric"></label></div><div class="muted" id="f-amt"></div>'+
+  '<label>Remark for the day<textarea id="f-note" rows="2" maxlength="300" placeholder="e.g. rain, festival, stock short"></textarea></label>'+
   '<div class="err" id="f-err"></div>'+
   '<div class="actions"><button class="btn" id="f-save"></button><button class="btn del" id="f-del" hidden>Delete entry</button></div></div></section>';
   fillForm();
 }
 function fillForm(){
   const r=rec(form.date,form.session);
-  $('#f-tea').value=r?r.tea:'';$('#f-coffee').value=r?r.coffee:'';calcAmt();
+  $('#f-tea').value=r?r.tea:'';$('#f-coffee').value=r?r.coffee:'';$('#f-note').value=notes[form.date]||'';calcAmt();
   $('#f-badge').textContent=r?'Editing saved '+form.session+' entry':'New '+form.session+' entry';
   $('#f-save').textContent=r?'Update entry':'Save entry';
   $('#f-del').hidden=!r;$('#f-err').textContent='';
@@ -218,16 +227,19 @@ function calcAmt(){const g=k=>+$('#f-'+k).value||0,el=$('#f-amt'),r=rec(form.dat
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),1800)}
 function saveForm(){
   const v=['tea','coffee'].map(k=>$('#f-'+k).value.trim());
+  const note=$('#f-note').value.trim();
+  if(form.date&&v[0]===''&&v[1]===''&&note!==''){notes[form.date]=note;saveNotes();toast('Remark saved');return}
   const prev=rec(form.date,form.session);
   if(!form.date){$('#f-err').textContent='Pick a date.';return}
   if(v.some(x=>x===''||!/^\d+$/.test(x))){$('#f-err').textContent='Enter whole numbers (0 or more) for tea and coffee.';return}
   const had=!!prev;
   data[form.date]=data[form.date]||{};
   data[form.date][form.session]={tea:+v[0],coffee:+v[1],tp:prev&&prev.tp!=null?prev.tp:prices.tea,cp:prev&&prev.cp!=null?prev.cp:prices.coffee};
-  persist();fillForm();toast(had?'Updated':'Saved');
+  if(note)notes[form.date]=note;else delete notes[form.date];
+  saveNotes();persist();fillForm();toast(had?'Updated':'Saved');
 }
 function renderSettings(){
-  $('#app').innerHTML='<section class="card" style="max-width:520px"><h2>Excel export</h2><div class="form"><p class="muted">Downloads an .xlsx file with every entry (cups, prices, amounts) and a daily summary.</p>'+monthNav()+'<div class="actions"><button class="btn" data-x="month">Download '+MN[mm]+' '+my+'</button><button class="btn ghost" data-x="all">Download all records</button></div></div></section>';
+  $('#app').innerHTML='<section class="card" style="max-width:520px"><h2>Download by date range</h2><div class="form"><label>From date<input type="date" id="x-from" value="'+xr.from+'"></label><label>To date<input type="date" id="x-to" value="'+xr.to+'"></label><div class="err" id="x-err"></div><div class="actions"><button class="btn" data-x="range">Download selected dates</button></div></div></section><section class="card" style="max-width:520px;margin-top:14px"><h2>Excel export</h2><div class="form"><p class="muted">Downloads an .xlsx file with every entry (cups, prices, amounts) and a daily summary.</p>'+monthNav()+'<div class="actions"><button class="btn" data-x="month">Download '+MN[mm]+' '+my+'</button><button class="btn ghost" data-x="all">Download all records</button></div></div></section>';
 }
 function renderSettingsOld(){
   $('#app').innerHTML='<div class="grid g2"><section class="card"><h2>Default prices</h2><div class="form"><label>Tea price (₹ per cup)<input type="number" id="p-tea" min="0" step="0.5" inputmode="decimal" value="'+prices.tea+'"></label><label>Coffee price (₹ per cup)<input type="number" id="p-coffee" min="0" step="0.5" inputmode="decimal" value="'+prices.coffee+'"></label><p class="muted">New entries start with these prices, and you can change them on any entry. Each saved entry keeps the price it was recorded at.</p><div class="err" id="p-err"></div><div><button class="btn" id="p-save">Save prices</button></div></div></section>'+
@@ -241,12 +253,18 @@ function savePrices(){
 }
 async function exportXlsx(scope){
   const pre=scope==='month'?my+'-'+pad(mm+1):'';
-  const dates=Object.keys(data).filter(d=>d.startsWith(pre)).sort();
+  if(scope==='range'){
+    const ex=$('#x-err');
+    if(!xr.from||!xr.to){if(ex)ex.textContent='Pick both From and To dates.';return}
+    if(xr.from>xr.to){if(ex)ex.textContent='From date must be on or before To date.';return}
+    if(ex)ex.textContent='';
+  }
+  const dates=[...new Set(Object.keys(data).concat(Object.keys(notes)))].filter(d=>scope==='range'?(d>=xr.from&&d<=xr.to):d.startsWith(pre)).sort();
   if(!dates.length){toast('No records to export');return}
   let dl=null;try{dl=typeof claude!=='undefined'?await claude.use('downloads'):{save:async({filename,data})=>{const a=document.createElement('a');a.href=URL.createObjectURL(data);a.download=filename;document.body.appendChild(a);a.click();a.remove()}}}catch(e){}
   if(!dl||!window.XLSX){toast('Excel download isn’t available here');return}
   const recs=[['Date','Session','Tea cups','Coffee cups','Total cups','Tea price','Coffee price','Tea amount','Coffee amount','Total amount']];
-  const daily=[['Date','Tea cups','Coffee cups','Total cups','Total amount']],T=[0,0,0];
+  const daily=[['Date','Tea cups','Coffee cups','Total cups','Total amount','Remark']],T=[0,0,0];
   dates.forEach(d=>{
     const dt=[0,0,0];
     SES.forEach(([k,l])=>{
@@ -255,18 +273,20 @@ async function exportXlsx(scope){
       recs.push([d,l,r.tea,r.coffee,r.tea+r.coffee,tp,cp,r.tea*tp,r.coffee*cp,r.tea*tp+r.coffee*cp]);
       dt[0]+=r.tea;dt[1]+=r.coffee;dt[2]+=r.tea*tp+r.coffee*cp;
     });
-    daily.push([d,dt[0],dt[1],dt[0]+dt[1],dt[2]]);
+    daily.push([d,dt[0],dt[1],dt[0]+dt[1],dt[2],notes[d]||'']);
     T[0]+=dt[0];T[1]+=dt[1];T[2]+=dt[2];
   });
-  daily.push(['Total',T[0],T[1],T[0]+T[1],T[2]]);
+  daily.push(['Total',T[0],T[1],T[0]+T[1],T[2],'']);
   const wb=XLSX.utils.book_new(),w1=XLSX.utils.aoa_to_sheet(recs),w2=XLSX.utils.aoa_to_sheet(daily);
   w1['!cols']=w2['!cols']=[{wch:12},{wch:10},{wch:11},{wch:12},{wch:11},{wch:11},{wch:13},{wch:12},{wch:14},{wch:13}];
+  w2['!cols']=[{wch:12},{wch:11},{wch:12},{wch:11},{wch:13},{wch:40}];
   XLSX.utils.book_append_sheet(wb,w1,'Records');XLSX.utils.book_append_sheet(wb,w2,'Daily summary');
   const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
-  try{await dl.save({filename:'chai-ledger-'+(pre||'all-records')+'.xlsx',data:new Blob([buf])});toast('Excel file saved')}
+  try{await dl.save({filename:'chai-ledger-'+(scope==='range'?xr.from+'-to-'+xr.to:(pre||'all-records'))+'.xlsx',data:new Blob([buf])});toast('Excel file saved')}
   catch(e){if(!e||e.code!=='declined')toast('Couldn’t save the file')}
 }
 let editP=false;
+let xr={from:ymd(new Date(now.getFullYear(),now.getMonth(),1)),to:todayStr};
 function renderPriceBar(){
   $('#pricebar').innerHTML=editP
    ?'<div class="card pbar"><label>Tea (₹ per cup)<input type="number" id="pb-tea" min="0" step="0.5" inputmode="decimal" value="'+prices.tea+'"></label><label>Coffee (₹ per cup)<input type="number" id="pb-coffee" min="0" step="0.5" inputmode="decimal" value="'+prices.coffee+'"></label><div class="actions"><button class="btn sm" id="pb-save">Save prices</button><button class="btn sm ghost" id="pb-cancel">Cancel</button></div><div class="err" id="pb-err"></div></div>'
@@ -305,7 +325,7 @@ document.addEventListener('click',e=>{
   if(b.id==='f-del'){if(confirm('Delete this entry?')){delete data[form.date][form.session];if(!data[form.date].morning&&!data[form.date].evening)delete data[form.date];persist();fillForm();toast('Deleted')}}
 });
 document.addEventListener('input',e=>{if(e.target.id&&e.target.id.startsWith('f-'))calcAmt()});
-document.addEventListener('change',e=>{if(e.target.id==='f-date'){form.date=e.target.value;sel=form.date||sel;if(form.date)fillForm()}});
+document.addEventListener('change',e=>{if(e.target.id==='x-from')xr.from=e.target.value;if(e.target.id==='x-to')xr.to=e.target.value;if(e.target.id==='f-date'){form.date=e.target.value;sel=form.date||sel;if(form.date)fillForm()}});
 const h=location.hash.slice(1);if(['dashboard','calendar','entry','settings'].includes(h))view=h;
 render();
 </script>
